@@ -1,3 +1,4 @@
+import os
 from flask import current_app as app
 from . import db
 from flask import render_template, request, redirect, url_for, jsonify, Response
@@ -5,9 +6,11 @@ from pony.orm import *
 from .forms import LoginForm, RegistrationForm
 from flask_login import current_user, login_user, login_required, logout_user
 from werkzeug.security import generate_password_hash
+from . import s3_helpers
 
 
 set_sql_debug(True)
+
 
 
 @app.route('/api/chats/<int:chat_id>/messages', methods=['GET', 'POST'])
@@ -29,7 +32,7 @@ def messages(chat_id):
 
     if request.method == 'GET':
         if user not in chat.users:
-            return "User not in this char group."
+            return "Page not found", 404
         else:  
             return jsonify([
                 {
@@ -37,10 +40,11 @@ def messages(chat_id):
                     'body': m.body,
                     'sender_first': m.sender_id.first_name,
                     'sender_last': m.sender_id.last_name,
+                    'sender_id' : m.sender_id.id,
                     'time-stamp': m.date_created
 
                 }
-                for m in chat.messages
+                for m in chat.messages.order_by(lambda m: desc(m.date_created))
             ])
 
     # post message to database
@@ -55,21 +59,27 @@ def messages(chat_id):
 
         with db_session:
             message = db.Message(body=body, sender_id=user, chat=chat)
-            return "Message successfully added"
+            commit()
+            return jsonify({
+                    'id': message.id,
+                    'body': message.body,
+                    'sender_first': message.sender_id.first_name,
+                    'sender_last': message.sender_id.last_name,
+                    'sender_id' : message.sender_id.id,
+                    'time-stamp': message.date_created
+
+                })
         
 
+
+
+@db_session
 @app.route('/api/chats', methods=['GET', 'POST'])
 def chats():
-    user_id = request.args.get('user_id')
 
-    if not user_id:
-        return "Invalid request.  No user id provided"
+    user_id = current_user.get_id()
 
-    try:
-        user = db.User[user_id]
-    except ObjectNotFound:
-        return("User Does not Exsist")
-
+    user = db.User[user_id]
 
     if request.method == 'GET':
         chats = []
@@ -80,21 +90,73 @@ def chats():
 
 
     if request.method == 'POST':
-        with db_session:
-            chat = db.Chat(chat_name = user.full_name, creator_id = user.id)
-            commit()
-            user.chats.add(db.Chat[chat.id])
-            return "Success!"
+        r = request.get_json()
+    
+        email = r['email']
+        sender_id = r['sender_id']
+
+        sender = db.User[sender_id]
+
+        try:
+            receipent = db.User.get(email=email)
+            print(receipent)
+            print(sender)
+        except ObjectNotFound:
+            return "User does not exsist", 404
+
+        chat = db.Chat(chat_name=receipent.full_name, creator_id=sender.id)
+        commit()
+        chat.users.add(sender)
+        chat.users.add(receipent)
+        return "Test"
+
+
+
+@app.route('/upload_avatar', methods=['POST'])
+def upload_avatar():
+    if request.method == "POST":
+        f = request.files['file']
+        f.save(os.path.join(UPLOAD_FOLDER, f.filename))
+        upload_file(f"uploads/{f.filename}", BUCKET)
+        
+
+
+
+
+# add users to chat.  Get list of chat users
+@app.route('/api/chats/<int:chat_id>/users', methods=['GET', 'POST'])
+def chat_users(chat_id):
+
+    try:
+        chat = db.Chat[chat_id]
+    except ObjectNotFound:
+        return "Chat Id not found"
+
+    if request.method == 'GET':
+        pass
+
+    if request.method == 'POST':
+        user_id = request.args.get('user_id')
+
+        try:
+            user = db.User[user_id]
+        except ObjectNotFound:
+            return "User does not exist"
+
+        chat.users.add(user)
+        
+        return "Chat added", 201
+        
 
 
 @app.route('/index', methods=['GET'])
 @app.route('/', methods=['GET'])
 def index():
-    user_id = request.args.get('user_id')
-    user = db.User[user_id]
-    return render_template('index.html', user=user, chats=user.chats)
+    return redirect(url_for('home'))
 
 
+
+# BROKEN
 @app.route('/api/users', methods=['GET', 'POST'])
 def users():
     if request.method == 'POST':
@@ -113,15 +175,20 @@ def users():
             return "User successfully added."
 
 
+
 @db_session
 @app.route('/chat', methods=['GET'])
 def home():
-    user_id = request.args.get('user_id')
+
+    if not current_user.is_authenticated:
+        return redirect(url_for('login'))
+    
+    user = current_user.get_id()
 
     try:
-        user = db.User[user_id]
+        user = db.User[user]
     except ObjectNotFound:
-        return("User Does not Exsist")
+        return("User Does not Exist")
 
     chats = []
     for c in user.chats:
@@ -133,16 +200,21 @@ def home():
         chats.append({"id": c.id, 
                       "last_updated": c.last_updated,
                       "last_message": last_message,
-                      "chat_name": user.first_name})
+                      "chat_name": user.first_name,
+                      "avatar": c.avatar})
     
-    return render_template('chat.html', chats=chats, user=user)
+    return render_template('chat.html', chats=chats, user=current_user)
     
+
+
+
 
 @db_session
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
-        return redirect(url_for('chat'))
+        user_id = current_user.get_id()
+        return redirect(url_for('home', user_id=[user_id]))
     form = RegistrationForm()
     if form.validate_on_submit():
         user = db.User(email=form.email.data, first_name=form.first_name.data, last_name=form.last_name.data, password=generate_password_hash(form.password.data))
@@ -154,6 +226,11 @@ def register():
 @db_session
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+
+    if current_user.is_authenticated:
+        user_id = current_user.get_id()
+        return redirect(url_for('home', user_id=[user_id]))
+
     form = LoginForm()
     if form.validate_on_submit():
         email = form.email.data
@@ -162,10 +239,11 @@ def login():
         print(user.user_id)
         if user.check_password_hash(form.password.data):
             login_user(user)
-            return "It worked!"
+            return redirect(url_for('home'))
         else:
             return "Did not work"
     return render_template('login.html', form=form)
+
 
 
 @app.route('/logout')

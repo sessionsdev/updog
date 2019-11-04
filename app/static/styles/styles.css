@@ -21,7 +21,7 @@ button.svg-wrap {
 }
 
 #header-sidebar {
-    width: 45%;
+    width: 35%;
     height: 100%;
     display: flex;
 }
@@ -123,7 +123,7 @@ img.icon-img {
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: #f8f8f8;
+    /* background-color: #f8f8f8; */
 }
 
 .chat-bubble {
@@ -141,11 +141,15 @@ img.icon-img {
 }
 
 .chat-bubble-wrap input {
-    border: none;
+    border: none; 
     margin-left: 14px;
     width: calc(100% - 28px);
     height: 100%;
     background: transparent;
+}
+
+#convo-search-field {
+    border: none;
 }
 
 .chat-bubble-wrap,
