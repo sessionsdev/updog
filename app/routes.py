@@ -15,6 +15,9 @@ set_sql_debug(True)
 
 @app.route('/api/chats/<int:chat_id>/messages', methods=['GET', 'POST'])
 def messages(chat_id):
+    '''
+    API to GET and POST messages.
+    '''
     
 
     user_id = int(request.args.get('user_id'))
@@ -156,26 +159,7 @@ def index():
 
 
 
-# BROKEN
-@app.route('/api/users', methods=['GET', 'POST'])
-def users():
-    if request.method == 'POST':
-        if not request.content_type == 'application/json':
-            return "Invalid request. Content type must be 'application/json'"
-
-        r = request.get_json()
-        first_name = r['first_name']
-        last_name = r['last_name']
-        email = r['email']
-        password = r['password']
-
-        with db_session:
-            user = db.User(first_name=first_name, last_name=last_name, email=email, password=password)
-
-            return "User successfully added."
-
-
-
+# API to display chats to the user.
 @db_session
 @app.route('/chat', methods=['GET'])
 def home():
@@ -208,7 +192,7 @@ def home():
 
 
 
-
+# Route to create new accounts.
 @db_session
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -223,6 +207,7 @@ def register():
 
 
 
+# Login route to authenticate users.
 @db_session
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -245,7 +230,7 @@ def login():
     return render_template('login.html', form=form)
 
 
-
+# Logout Users
 @app.route('/logout')
 def logout():
     logout_user()

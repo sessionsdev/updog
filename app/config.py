@@ -5,7 +5,7 @@ class Config(object):
     DEGUB = False
     TESTING = False
     CSRF_ENABLED = True
-    SECRET_KEY = os.environ.get('SECRET_KEY')
+    SECRET_KEY = os.environ.get('SECRET_KEY', '12345')
     BUCKET = os.environ.get('BUCKET')
     UPLOAD_FOLDER = 'uploads'
 
@@ -15,12 +15,12 @@ class Config(object):
             'provider': os.environ.get('DB_PROVIDER', 'mysql'),
             'host': os.environ.get('DB_HOST', '0.0.0.0'),
             'user': os.environ.get('DB_USER', 'root'),
-            'passwd': os.environ.get('DB_PASSWORD', 'PASSWORD'),
+            'passwd': os.environ.get('DB_PASSWORD'),
             'db': os.environ.get('DB_NAME', 'updog')
         }
     elif db_provider == 'postgres':
         PONY = {
-            'provider': os.environ.get('DB_PROVIDER', 'mysql'),
+            'provider': os.environ.get('DB_PROVIDER', 'postgres'),
             'host': os.environ.get('DB_HOST', '0.0.0.0'),
             'user': os.environ.get('DB_USER', 'root'),
             'password': os.environ.get('DB_PASSWORD', 'PASSWORD'),
